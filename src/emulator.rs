@@ -2,8 +2,10 @@ use anyhow::Result;
 use std::path::Path;
 use crate::input_state::InputState;
 
-// Import the actual NES core
+// Import emulator cores
 use nes_core::NES;
+use snes_core::SNES;
+use genesis_core::Genesis;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemType {
@@ -121,41 +123,37 @@ impl EmulatorCore for NESCore {
 }
 
 struct SNESCore {
-    framebuffer: Vec<u8>,
-    audio_buffer: Vec<i16>,
+    snes: SNES,
 }
 
 impl SNESCore {
     fn new() -> Self {
-        // SNES resolution: 256x224 (or 512x448 in hi-res), RGBA format
         Self {
-            framebuffer: vec![0; 256 * 224 * 4],
-            audio_buffer: Vec::new(),
+            snes: SNES::new(),
         }
     }
     
-    fn load_rom(&mut self, _data: &[u8]) -> Result<()> {
-        // TODO: Parse SNES ROM format
-        Ok(())
+    fn load_rom(&mut self, data: &[u8]) -> Result<()> {
+        self.snes.load_rom(data)
     }
 }
 
 impl EmulatorCore for SNESCore {
     fn reset(&mut self) {
-        // TODO: Reset 65816 CPU, PPU, SPC700
+        self.snes.reset();
     }
     
     fn run_frame(&mut self, _input: &InputState) -> Result<()> {
-        // TODO: Run one frame of SNES emulation
+        self.snes.run_frame();
         Ok(())
     }
     
     fn get_framebuffer(&self) -> &[u8] {
-        &self.framebuffer
+        self.snes.get_framebuffer()
     }
     
     fn get_audio_samples(&mut self) -> &[i16] {
-        &self.audio_buffer
+        &[]
     }
     
     fn save_state(&self) -> Result<Vec<u8>> {
@@ -168,41 +166,37 @@ impl EmulatorCore for SNESCore {
 }
 
 struct GenesisCore {
-    framebuffer: Vec<u8>,
-    audio_buffer: Vec<i16>,
+    genesis: Genesis,
 }
 
 impl GenesisCore {
     fn new() -> Self {
-        // Genesis resolution: 320x224, RGBA format
         Self {
-            framebuffer: vec![0; 320 * 224 * 4],
-            audio_buffer: Vec::new(),
+            genesis: Genesis::new(),
         }
     }
     
-    fn load_rom(&mut self, _data: &[u8]) -> Result<()> {
-        // TODO: Parse Genesis ROM format
-        Ok(())
+    fn load_rom(&mut self, data: &[u8]) -> Result<()> {
+        self.genesis.load_rom(data)
     }
 }
 
 impl EmulatorCore for GenesisCore {
     fn reset(&mut self) {
-        // TODO: Reset 68000, Z80, VDP
+        self.genesis.reset();
     }
     
     fn run_frame(&mut self, _input: &InputState) -> Result<()> {
-        // TODO: Run one frame of Genesis emulation
+        self.genesis.run_frame();
         Ok(())
     }
     
     fn get_framebuffer(&self) -> &[u8] {
-        &self.framebuffer
+        self.genesis.get_framebuffer()
     }
     
     fn get_audio_samples(&mut self) -> &[i16] {
-        &self.audio_buffer
+        &[]
     }
     
     fn save_state(&self) -> Result<Vec<u8>> {

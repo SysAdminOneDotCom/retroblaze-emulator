@@ -11,6 +11,8 @@ mod input;
 mod input_state;
 mod video;
 mod utils;
+mod library;
+mod launcher;
 
 use emulator::{Emulator, SystemType};
 use input::ControllerManager;
@@ -20,21 +22,29 @@ use video::Renderer;
 /// Command line arguments
 #[derive(Debug)]
 struct Args {
-    system: SystemType,
-    rom_path: PathBuf,
+    system: Option<SystemType>,
+    rom_path: Option<PathBuf>,
     state_path: Option<PathBuf>,
     debug: bool,
+    launcher_mode: bool,
 }
 
 fn parse_args() -> Result<Args> {
     let args: Vec<String> = std::env::args().collect();
     
-    if args.len() < 3 {
-        anyhow::bail!("Usage: {} --system <nes|snes|genesis> --rom <path>", args[0]);
+    // If no arguments, launch in GUI mode
+    if args.len() == 1 {
+        return Ok(Args {
+            system: None,
+            rom_path: None,
+            state_path: None,
+            debug: false,
+            launcher_mode: true,
+        });
     }
     
-    let mut system = SystemType::NES;
-    let mut rom_path = PathBuf::new();
+    let mut system = None;
+    let mut rom_path = None;
     let mut state_path = None;
     let mut debug = false;
     
@@ -43,16 +53,16 @@ fn parse_args() -> Result<Args> {
         match args[i].as_str() {
             "--system" => {
                 i += 1;
-                system = match args[i].as_str() {
+                system = Some(match args[i].as_str() {
                     "nes" => SystemType::NES,
                     "snes" => SystemType::SNES,
                     "genesis" | "md" => SystemType::Genesis,
                     _ => anyhow::bail!("Unknown system: {}", args[i]),
-                };
+                });
             }
             "--rom" => {
                 i += 1;
-                rom_path = PathBuf::from(&args[i]);
+                rom_path = Some(PathBuf::from(&args[i]));
             }
             "--state" => {
                 i += 1;
@@ -61,20 +71,35 @@ fn parse_args() -> Result<Args> {
             "--debug" => {
                 debug = true;
             }
+            "--launcher" => {
+                return Ok(Args {
+                    system: None,
+                    rom_path: None,
+                    state_path: None,
+                    debug,
+                    launcher_mode: true,
+                });
+            }
             _ => {}
         }
         i += 1;
     }
     
-    if !rom_path.exists() {
-        anyhow::bail!("ROM file not found: {:?}", rom_path);
+    if rom_path.is_none() || system.is_none() {
+        anyhow::bail!("Usage: {} --system <nes|snes|genesis> --rom <path>", args[0]);
+    }
+    
+    let rom = rom_path.unwrap();
+    if !rom.exists() {
+        anyhow::bail!("ROM file not found: {:?}", rom);
     }
     
     Ok(Args {
         system,
-        rom_path,
+        rom_path: Some(rom),
         state_path,
         debug,
+        launcher_mode: false,
     })
 }
 
@@ -88,7 +113,41 @@ fn main() -> Result<()> {
     
     // Parse arguments
     let args = parse_args()?;
-    info!("System: {:?}, ROM: {:?}", args.system, args.rom_path);
+    
+    // Launch GUI if in launcher mode
+    if args.launcher_mode {
+        return launch_gui();
+    }
+    
+    // Otherwise launch emulator directly
+    let system = args.system.unwrap();
+    let rom_path = args.rom_path.unwrap();
+    
+    info!("System: {:?}, ROM: {:?}", system, rom_path);
+    
+    run_emulator(system, rom_path, args.state_path)
+}
+
+fn launch_gui() -> Result<()> {
+    use launcher::LauncherApp;
+    
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1024.0, 768.0])
+            .with_title("RetroBlazeEmulator - Game Library"),
+        ..Default::default()
+    };
+    
+    eframe::run_native(
+        "RetroBlazeEmulator",
+        native_options,
+        Box::new(|cc| Box::new(LauncherApp::new(cc))),
+    ).map_err(|e| anyhow::anyhow!("GUI error: {}", e))?;
+    
+    Ok(())
+}
+
+fn run_emulator(system: SystemType, rom_path: PathBuf, state_path: Option<PathBuf>) -> Result<()> {
     
     // Initialize SDL2
     let sdl_context = sdl2::init().map_err(|e| anyhow::anyhow!("SDL2 init failed: {}", e))?;
@@ -96,7 +155,7 @@ fn main() -> Result<()> {
     let _audio_subsystem = sdl_context.audio().map_err(|e| anyhow::anyhow!("Audio init failed: {}", e))?;
     
     // Create window
-    let window_title = format!("RetroBlazeEmulator - {}", args.rom_path.file_name().unwrap().to_string_lossy());
+    let window_title = format!("RetroBlazeEmulator - {}", rom_path.file_name().unwrap().to_string_lossy());
     let window = video_subsystem
         .window(&window_title, 800, 600)
         .position_centered()
@@ -111,12 +170,12 @@ fn main() -> Result<()> {
     info!("Controller support initialized - Looking for PlayStation DualShock 4...");
     
     // Load emulator
-    let mut emulator = Emulator::new(args.system)?;
-    emulator.load_rom(&args.rom_path)?;
+    let mut emulator = Emulator::new(system)?;
+    emulator.load_rom(&rom_path)?;
     
-    if let Some(state_path) = args.state_path {
-        info!("Loading save state: {:?}", state_path);
-        emulator.load_state(&state_path)?;
+    if let Some(ref save_state_path) = state_path {
+        info!("Loading save state: {:?}", save_state_path);
+        emulator.load_state(save_state_path)?;
     }
     
     info!("✅ Emulator initialized successfully!");
@@ -137,6 +196,7 @@ fn main() -> Result<()> {
     let mut frame_count = 0u64;
     let mut last_fps_time = Instant::now();
     let mut _fps = 0.0;
+    let debug = false;
     
     while running {
         let frame_start = Instant::now();
@@ -201,7 +261,7 @@ fn main() -> Result<()> {
             _fps = frame_count as f64 / last_fps_time.elapsed().as_secs_f64();
             frame_count = 0;
             last_fps_time = Instant::now();
-            if args.debug {
+            if debug {
                 info!("FPS: {:.2}", _fps);
             }
         }
