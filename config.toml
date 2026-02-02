@@ -1,0 +1,71 @@
+# RetroBlazeEmulator Configuration
+
+[video]
+# Window settings
+window_width = 800
+window_height = 600
+fullscreen = false
+vsync = true
+scale_mode = "aspect_fit"  # Options: aspect_fit, stretch, integer
+
+[audio]
+# Audio settings
+enabled = true
+sample_rate = 44100
+buffer_size = 512
+volume = 0.8
+
+[input]
+# Keyboard mappings (default)
+[input.keyboard]
+up = "Up"
+down = "Down"
+left = "Left"
+right = "Right"
+a = "Z"
+b = "X"
+x = "A"
+y = "S"
+start = "Return"
+select = "RShift"
+l = "Q"
+r = "W"
+
+# PlayStation DualShock 4 Controller mappings
+[input.ps4_controller]
+# Auto-detected - these are the defaults
+# You can customize button mappings here
+[input.ps4_controller.nes]
+a = "Cross"       # X button
+b = "Circle"      # O button
+start = "Options"
+select = "Share"
+
+[input.ps4_controller.snes]
+a = "Cross"       # X button
+b = "Circle"      # O button
+x = "Square"      # □ button
+y = "Triangle"    # △ button
+l = "L1"
+r = "R1"
+start = "Options"
+select = "Share"
+
+[input.ps4_controller.genesis]
+a = "Square"      # □ button
+b = "Cross"       # X button
+c = "Circle"      # O button
+start = "Options"
+
+[emulation]
+# Emulation settings
+speed = 1.0  # 1.0 = normal speed, 2.0 = 2x fast, etc.
+frame_skip = 0
+rewind_enabled = false
+save_state_slots = 10
+
+[debug]
+# Debug settings
+show_fps = false
+show_cpu_info = false
+log_level = "info"  # Options: debug, info, warn, error

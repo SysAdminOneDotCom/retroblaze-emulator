@@ -1,0 +1,161 @@
+/// MOS Technology 6502 CPU Emulator
+/// 
+/// 8-bit microprocessor with:
+/// - 3 general purpose registers (A, X, Y)
+/// - 8-bit stack pointer
+/// - 16-bit program counter
+/// - 7 status flags
+
+use bitflags::bitflags;
+use crate::bus::Bus;
+
+bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct StatusFlags: u8 {
+        const CARRY     = 0b0000_0001;  // C
+        const ZERO      = 0b0000_0010;  // Z
+        const INTERRUPT = 0b0000_0100;  // I (Interrupt Disable)
+        const DECIMAL   = 0b0000_1000;  // D (Decimal Mode - not used in NES)
+        const BREAK     = 0b0001_0000;  // B
+        const UNUSED    = 0b0010_0000;  // Always set to 1
+        const OVERFLOW  = 0b0100_0000;  // V
+        const NEGATIVE  = 0b1000_0000;  // N
+    }
+}
+
+pub struct CPU6502 {
+    // Registers
+    pub a: u8,          // Accumulator
+    pub x: u8,          // X index register
+    pub y: u8,          // Y index register
+    pub sp: u8,         // Stack pointer
+    pub pc: u16,        // Program counter
+    pub status: StatusFlags,
+    
+    // State
+    pub cycles: u64,
+}
+
+impl CPU6502 {
+    pub fn new() -> Self {
+        Self {
+            a: 0,
+            x: 0,
+            y: 0,
+            sp: 0xFD,
+            pc: 0,
+            status: StatusFlags::UNUSED | StatusFlags::INTERRUPT,
+            cycles: 0,
+        }
+    }
+    
+    pub fn reset(&mut self, bus: &mut Bus) {
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.sp = 0xFD;
+        self.status = StatusFlags::UNUSED | StatusFlags::INTERRUPT;
+        
+        // Read reset vector
+        let lo = bus.read(0xFFFC) as u16;
+        let hi = bus.read(0xFFFD) as u16;
+        self.pc = (hi << 8) | lo;
+        
+        self.cycles = 7; // Reset takes 7 cycles
+    }
+    
+    pub fn step(&mut self, bus: &mut Bus) -> u8 {
+        let opcode = bus.read(self.pc);
+        self.pc = self.pc.wrapping_add(1);
+        
+        // Execute instruction based on opcode
+        let cycles = self.execute(opcode, bus);
+        self.cycles += cycles as u64;
+        
+        cycles
+    }
+    
+    fn execute(&mut self, opcode: u8, bus: &mut Bus) -> u8 {
+        // Simplified instruction set - implement key opcodes
+        match opcode {
+            // LDA - Load Accumulator
+            0xA9 => { // Immediate
+                let value = self.read_immediate(bus);
+                self.a = value;
+                self.update_zero_and_negative_flags(value);
+                2
+            }
+            0xA5 => { // Zero Page
+                let addr = self.read_zero_page_addr(bus);
+                let value = bus.read(addr);
+                self.a = value;
+                self.update_zero_and_negative_flags(value);
+                3
+            }
+            
+            // LDX - Load X Register
+            0xA2 => { // Immediate
+                let value = self.read_immediate(bus);
+                self.x = value;
+                self.update_zero_and_negative_flags(value);
+                2
+            }
+            
+            // LDY - Load Y Register
+            0xA0 => { // Immediate
+                let value = self.read_immediate(bus);
+                self.y = value;
+                self.update_zero_and_negative_flags(value);
+                2
+            }
+            
+            // STA - Store Accumulator
+            0x85 => { // Zero Page
+                let addr = self.read_zero_page_addr(bus);
+                bus.write(addr, self.a);
+                3
+            }
+            
+            // JMP - Jump
+            0x4C => { // Absolute
+                let addr = self.read_absolute_addr(bus);
+                self.pc = addr;
+                3
+            }
+            
+            // NOP - No Operation
+            0xEA => 2,
+            
+            // Default - unimplemented
+            _ => {
+                2
+            }
+        }
+    }
+    
+    // Addressing modes
+    fn read_immediate(&mut self, bus: &Bus) -> u8 {
+        let value = bus.read(self.pc);
+        self.pc = self.pc.wrapping_add(1);
+        value
+    }
+    
+    fn read_zero_page_addr(&mut self, bus: &Bus) -> u16 {
+        let addr = bus.read(self.pc) as u16;
+        self.pc = self.pc.wrapping_add(1);
+        addr
+    }
+    
+    fn read_absolute_addr(&mut self, bus: &Bus) -> u16 {
+        let lo = bus.read(self.pc) as u16;
+        let hi = bus.read(self.pc.wrapping_add(1)) as u16;
+        self.pc = self.pc.wrapping_add(2);
+        (hi << 8) | lo
+    }
+    
+    // Helper functions
+    fn update_zero_and_negative_flags(&mut self, value: u8) {
+        self.status.set(StatusFlags::ZERO, value == 0);
+        self.status.set(StatusFlags::NEGATIVE, (value & 0x80) != 0);
+    }
+}
